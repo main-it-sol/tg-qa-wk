@@ -58,3 +58,5 @@ Thumbs.db
 
 # Local utility scripts
 publish_changes
+
+research/outputs/*.pdf
