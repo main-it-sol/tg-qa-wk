@@ -60,3 +60,6 @@ Thumbs.db
 publish_changes
 
 research/outputs/*.pdf
+
+# Obsidian per-vault config (personal workspace state)
+research/wiki/.obsidian/
