@@ -6,8 +6,10 @@ sources:
 related:
   - "[[voice-backend-sketch]]"
   - "[[voice-session-state-machine]]"
+  - "[[testing-levels]]"
+  - "[[testing-strategy]]"
 created: 2026-05-25
-updated: 2026-05-25
+updated: 2026-05-26
 confidence: high
 ---
 
@@ -28,6 +30,8 @@ The sketch's `tests/` directory uses pytest with "fakes only — no external ser
 - No GPU required to run the test suite.
 - No network, no API keys, no rate limits in CI.
 - Deterministic timing — fakes can emit PCM chunks on a synthetic clock, so the [[voice-session-state-machine]] can be asserted at exact tick boundaries.
+
+In [[testing-levels]] terms, this gives the project cheap unit + integration coverage of the orchestrator; in [[testing-strategy]] terms, those are exactly the high-value targets for headless code crossing third-party seams.
 
 ## Why three ABCs, not one
 
