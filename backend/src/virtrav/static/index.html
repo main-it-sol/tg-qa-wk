@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Virtual Rabbi — voice loop</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e7e9ee;
+      --muted: #8b93a7;
+      --accent: #6ee7b7;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --panel: #1a1d24;
+      --border: #2a2f3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    .sub { color: var(--muted); font-size: 12px; }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #20232c;
+      border: 1px solid var(--border);
+      font-variant: small-caps;
+      letter-spacing: 0.04em;
+      font-size: 12px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .state-idle      .dot { background: #6b7280; }
+    .state-listening .dot { background: var(--accent); }
+    .state-thinking  .dot { background: var(--warn); }
+    .state-speaking  .dot { background: #60a5fa; }
+    .state-error     .dot { background: var(--bad); }
+    button {
+      background: #2a2f3a;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: #353b48; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary { background: #2563eb; border-color: #2563eb; }
+    button.danger  { background: #b91c1c; border-color: #b91c1c; }
+    #transcript {
+      min-height: 1.5em;
+      font-size: 16px;
+      color: var(--fg);
+    }
+    #transcript:empty::before {
+      content: "(waiting for speech…)";
+      color: var(--muted);
+      font-size: 14px;
+    }
+    #log {
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      background: #0b0d12;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .log-line { white-space: pre-wrap; word-break: break-word; }
+    .log-in  { color: var(--accent); }
+    .log-out { color: #93c5fd; }
+    .log-err { color: var(--bad); }
+    .log-sys { color: var(--muted); }
+    label.field { display: flex; align-items: center; gap: 8px; }
+    input[type=text] {
+      background: #0b0d12;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: inherit;
+      width: 280px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Virtual Rabbi</h1>
+    <span class="sub">voice loop · dev UI</span>
+  </header>
+  <main>
+    <div class="panel">
+      <div class="row" style="justify-content: space-between;">
+        <div id="state" class="badge state-idle"><span class="dot"></span><span id="state-text">disconnected</span></div>
+        <div class="sub" id="meta">ws: —</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <button id="btn-connect"  class="primary">Connect</button>
+        <button id="btn-disconnect" disabled>Disconnect</button>
+        <button id="btn-talk"     disabled>Hold to talk</button>
+        <button id="btn-interrupt" class="danger" disabled>Interrupt</button>
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <label class="field"><span class="sub">WS URL</span>
+          <input id="ws-url" type="text" />
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sub">Latest transcript</div>
+      <div id="transcript"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content: space-between;">
+        <div class="sub">Event log</div>
+        <button id="btn-clear-log">Clear</button>
+      </div>
+      <div id="log" style="margin-top: 8px;"></div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const stateEl     = $("state");
+  const stateText   = $("state-text");
+  const metaEl      = $("meta");
+  const transcript  = $("transcript");
+  const logEl       = $("log");
+  const wsInput     = $("ws-url");
+  const btnConnect  = $("btn-connect");
+  const btnDisco    = $("btn-disconnect");
+  const btnTalk     = $("btn-talk");
+  const btnInterrupt= $("btn-interrupt");
+  const btnClear    = $("btn-clear-log");
+
+  const defaultWsUrl = (() => {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${location.host}/voice`;
+  })();
+  wsInput.value = defaultWsUrl;
+
+  let ws = null;
+  let audioCtx = null;
+  let serverSampleRate = 24000;
+  /** @type {Map<number, AudioBufferSourceNode[]>} */
+  const playingByUtt = new Map();
+  let playheadByUtt = new Map();
+
+  // Mic capture
+  let mediaStream = null;
+  /** @type {AudioWorkletNode | ScriptProcessorNode | null} */
+  let micNode = null;
+  let micCtx = null;
+
+  function setState(name, label) {
+    stateEl.className = `badge state-${name}`;
+    stateText.textContent = label ?? name;
+  }
+
+  function log(kind, msg) {
+    const line = document.createElement("div");
+    line.className = `log-line log-${kind}`;
+    const ts = new Date().toISOString().slice(11, 23);
+    line.textContent = `[${ts}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  btnClear.addEventListener("click", () => { logEl.innerHTML = ""; });
+
+  // -------- audio playback --------
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: serverSampleRate });
+    }
+    return audioCtx;
+  }
+
+  function pcm16ToFloat32(buf) {
+    const view = new DataView(buf);
+    const samples = buf.byteLength / 2;
+    const out = new Float32Array(samples);
+    for (let i = 0; i < samples; i++) {
+      const s = view.getInt16(i * 2, true);
+      out[i] = s / 32768;
+    }
+    return out;
+  }
+
+  function playFrame(utt, _seq, pcm) {
+    const ctx = ensureAudioCtx();
+    const f32 = pcm16ToFloat32(pcm);
+    if (!f32.length) return;
+    const buffer = ctx.createBuffer(1, f32.length, ctx.sampleRate);
+    buffer.getChannelData(0).set(f32);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    const playhead = Math.max(ctx.currentTime, playheadByUtt.get(utt) ?? 0);
+    src.start(playhead);
+    playheadByUtt.set(utt, playhead + buffer.duration);
+    const arr = playingByUtt.get(utt) ?? [];
+    arr.push(src);
+    playingByUtt.set(utt, arr);
+    src.onended = () => {
+      const a = playingByUtt.get(utt);
+      if (!a) return;
+      const idx = a.indexOf(src);
+      if (idx >= 0) a.splice(idx, 1);
+    };
+  }
+
+  function flushUtterance(utt) {
+    const arr = playingByUtt.get(utt);
+    if (arr) {
+      for (const s of arr) { try { s.stop(); } catch {} }
+      playingByUtt.delete(utt);
+    }
+    playheadByUtt.delete(utt);
+  }
+
+  // -------- websocket --------
+  function connect() {
+    const url = wsInput.value.trim();
+    if (!url) return;
+    try {
+      ws = new WebSocket(url);
+    } catch (err) {
+      log("err", `connect failed: ${err.message}`);
+      return;
+    }
+    ws.binaryType = "arraybuffer";
+    metaEl.textContent = `ws: connecting ${url}`;
+    setState("idle", "connecting");
+    btnConnect.disabled = true;
+
+    ws.addEventListener("open", () => {
+      metaEl.textContent = `ws: open`;
+      setState("idle", "idle");
+      btnDisco.disabled = false;
+      btnTalk.disabled = false;
+      btnInterrupt.disabled = false;
+      log("sys", "websocket open");
+    });
+
+    ws.addEventListener("close", (ev) => {
+      metaEl.textContent = `ws: closed (${ev.code})`;
+      setState("idle", "disconnected");
+      btnConnect.disabled = false;
+      btnDisco.disabled = true;
+      btnTalk.disabled = true;
+      btnInterrupt.disabled = true;
+      stopMic();
+      log("sys", `websocket closed (${ev.code})`);
+      ws = null;
+    });
+
+    ws.addEventListener("error", () => {
+      log("err", "websocket error");
+    });
+
+    ws.addEventListener("message", (ev) => {
+      if (typeof ev.data === "string") {
+        let msg;
+        try { msg = JSON.parse(ev.data); }
+        catch { log("err", `bad json: ${ev.data}`); return; }
+        handleControl(msg);
+      } else {
+        // audio frame: 8-byte header + pcm
+        const buf = ev.data;
+        if (buf.byteLength < 8) { log("err", "audio frame too short"); return; }
+        const dv = new DataView(buf);
+        const utt = dv.getUint32(0, false);
+        const seq = dv.getUint32(4, false);
+        playFrame(utt, seq, buf.slice(8));
+      }
+    });
+  }
+
+  function handleControl(msg) {
+    log("in", JSON.stringify(msg));
+    switch (msg.type) {
+      case "hello":
+        if (typeof msg.sample_rate === "number") serverSampleRate = msg.sample_rate;
+        metaEl.textContent = `ws: open · server ${msg.sample_rate}Hz ${msg.format}`;
+        break;
+      case "transcript":
+        transcript.textContent = msg.text || "";
+        break;
+      case "speech_start":
+        setState("speaking", "speaking");
+        break;
+      case "speech_end":
+        setState("idle", "idle");
+        break;
+      case "cancel":
+        flushUtterance(msg.utterance_id);
+        setState("idle", "cancelled");
+        break;
+      case "error":
+        setState("error", "error");
+        log("err", `server error: ${msg.reason}`);
+        break;
+    }
+  }
+
+  function disconnect() {
+    if (ws) ws.close();
+  }
+
+  function sendControl(obj) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const text = JSON.stringify(obj);
+    ws.send(text);
+    log("out", text);
+  }
+
+  btnConnect.addEventListener("click", connect);
+  btnDisco.addEventListener("click", disconnect);
+  btnInterrupt.addEventListener("click", () => sendControl({ type: "interrupt" }));
+
+  // -------- microphone (PCM16 @16k) --------
+  async function startMic() {
+    if (mediaStream) return;
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        video: false,
+      });
+    } catch (err) {
+      log("err", `mic denied: ${err.message}`);
+      return;
+    }
+    micCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    const source = micCtx.createMediaStreamSource(mediaStream);
+    // ScriptProcessorNode is deprecated but ubiquitously available — fine for dev UI.
+    const proc = micCtx.createScriptProcessor(2048, 1, 1);
+    proc.onaudioprocess = (ev) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const f32 = ev.inputBuffer.getChannelData(0);
+      const buf = new ArrayBuffer(f32.length * 2);
+      const view = new DataView(buf);
+      for (let i = 0; i < f32.length; i++) {
+        let s = Math.max(-1, Math.min(1, f32[i]));
+        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      ws.send(buf);
+    };
+    source.connect(proc);
+    proc.connect(micCtx.destination);
+    micNode = proc;
+    setState("listening", "listening");
+    log("sys", "mic on (16kHz pcm16)");
+  }
+
+  function stopMic() {
+    if (micNode) { try { micNode.disconnect(); } catch {} micNode = null; }
+    if (micCtx) { try { micCtx.close(); } catch {} micCtx = null; }
+    if (mediaStream) {
+      for (const t of mediaStream.getTracks()) t.stop();
+      mediaStream = null;
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) setState("idle", "idle");
+  }
+
+  function bindHold(btn, onDown, onUp) {
+    const down = (e) => { e.preventDefault(); onDown(); };
+    const up   = (e) => { e.preventDefault(); onUp();   };
+    btn.addEventListener("mousedown", down);
+    btn.addEventListener("mouseup",   up);
+    btn.addEventListener("mouseleave", up);
+    btn.addEventListener("touchstart", down, { passive: false });
+    btn.addEventListener("touchend",   up,   { passive: false });
+  }
+
+  bindHold(btnTalk, startMic, stopMic);
+
+  // tiny smoke check: surface protocol assumptions in the log on first paint
+  log("sys", `ready · default ws: ${defaultWsUrl}`);
+})();
+</script>
+</body>
+</html>
