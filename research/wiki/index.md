@@ -11,6 +11,7 @@ Master catalog of all wiki pages. Updated on every ingest / edit.
 
 - [[voice-session-state-machine]] — `concepts/voice-session-state-machine.md` — Four-state `VoiceSession` orchestrator (IDLE / LISTENING / THINKING / SPEAKING) with barge-in.
 - [[voice-wire-protocol]] — `concepts/voice-wire-protocol.md` — Single-WebSocket protocol: JSON text control frames + int16-LE PCM binary frames with utterance-id header server→client.
+- [[voice-pipeline-overview]] — `concepts/voice-pipeline-overview.md` — Comprehensive overview of the WebSocket handler: layered architecture (ws.py, protocol.py, session.py, vad.py, adapters.py), data flow, and design decisions.
 - [[voice-activity-detection]] — `concepts/voice-activity-detection.md` — Energy-based VAD with hysteresis; drives `speech_start` / `speech_end` events.
 - [[barge-in]] — `concepts/barge-in.md` — User interrupts assistant mid-TTS; server emits `cancel`, client drains queued buffers by `utterance_id`.
 - [[adapter-pattern-stt-llm-tts]] — `concepts/adapter-pattern-stt-llm-tts.md` — STT/LLM/TTS ABCs + fakes so tests run with no external services.
